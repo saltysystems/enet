@@ -139,6 +139,10 @@ handle_cast({send_reliable, Data}, S0) ->
     {H,C} = enet_command:send_reliable(ID, N, Data),
     ok = enet_peer:send_command(Peer, {H,C}),
     S1 = S0#state{outgoing_reliable_sequence_number = N+1},
+    {noreply, S1};
+handle_cast(Msg, S0) ->
+    logger:debug("Unhandled message: ~p", [Msg]),
+    logger:debug("Current state: ~p", [S0]),
     {noreply, S1}.
 
 handle_info(Msg, S0) ->
