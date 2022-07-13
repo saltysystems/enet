@@ -143,7 +143,7 @@ handle_cast({send_reliable, Data}, S0) ->
 handle_cast(Msg, S0) ->
     logger:debug("Unhandled message: ~p", [Msg]),
     logger:debug("Current state: ~p", [S0]),
-    {noreply, S1}.
+    {noreply, S0}.
 
 handle_info(Msg, S0) ->
     logger:debug("Got unhandled msg: ~p", [Msg]),
