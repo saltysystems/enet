@@ -510,7 +510,7 @@ connected(enter, _OldState, S) ->
             {stop, {worker_init_error, Reason}, S};
         {ok, Worker} ->
             _Ref = monitor(process, Worker),
-            [enet_channel:set_worker(C, Worker) || C <- maps:values(Channels)],
+            [enet_channel_srv:set_worker(C, Worker) || C <- maps:values(Channels)],
             NewS = S#state{
                      channels = Channels,
                      worker = Worker
@@ -602,7 +602,7 @@ connected(cast, {incoming_command, {H, C = #unsequenced{}}}, S) ->
     %%
     #command_header{ channel_id = ChannelID } = H,
     #state{ channels = #{ ChannelID := Channel } } = S,
-    ok = enet_channel:recv_unsequenced(Channel, {H, C}),
+    ok = enet_channel_srv:recv_unsequenced(Channel, {H, C}),
     RecvTimeout = reset_recv_timer(),
     {keep_state, S, [RecvTimeout]};
 
@@ -615,7 +615,7 @@ connected(cast, {incoming_command, {H, C = #unreliable{}}}, S) ->
     %%
     #command_header{ channel_id = ChannelID } = H,
     #state{ channels = #{ ChannelID := Channel } } = S,
-    ok = enet_channel:recv_unreliable(Channel, {H, C}),
+    ok = enet_channel_srv:recv_unreliable(Channel, {H, C}),
     RecvTimeout = reset_recv_timer(),
     {keep_state, S, [RecvTimeout]};
 
@@ -628,7 +628,7 @@ connected(cast, {incoming_command, {H, C = #reliable{}}}, S) ->
     %%
     #command_header{ channel_id = ChannelID } = H,
     #state{ channels = #{ ChannelID := Channel } } = S,
-    ok = enet_channel:recv_reliable(Channel, {H, C}),
+    ok = enet_channel_srv:recv_reliable(Channel, {H, C}),
     RecvTimeout = reset_recv_timer(),
     {keep_state, S, [RecvTimeout]};
 
@@ -933,7 +933,7 @@ start_channels(N) ->
     Channels =
         lists:map(
           fun (ID) ->
-                  {ok, Channel} = enet_channel:start_link(ID, self()),
+                  {ok, Channel} = enet_channel_srv:start_link(ID, self()),
                   {ID, Channel}
           end,
           IDs),

@@ -79,19 +79,19 @@ disconnect_peer_now(Peer) ->
 -spec send_unsequenced(Channel :: pid(), Data :: iodata()) -> ok.
 
 send_unsequenced(Channel, Data) ->
-    enet_channel:send_unsequenced(Channel, Data).
+    enet_channel_srv:send_unsequenced(Channel, Data).
 
 
 -spec send_unreliable(Channel :: pid(), Data :: iodata()) -> ok.
 
 send_unreliable(Channel, Data) ->
-    enet_channel:send_unreliable(Channel, Data).
+    enet_channel_srv:send_unreliable(Channel, Data).
 
 
 -spec send_reliable(Channel :: pid(), Data :: iodata()) -> ok.
 
 send_reliable(Channel, Data) ->
-    enet_channel:send_reliable(Channel, Data).
+    enet_channel_srv:send_reliable(Channel, Data).
 
 
 -spec broadcast_unsequenced(HostPort :: port_number(),
