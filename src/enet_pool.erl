@@ -3,30 +3,28 @@
 
 %% API
 -export([
-         start_link/2,
-         add_peer/2,
-         pick_peer/2,
-         remove_peer/2,
-         connect_peer/2,
-         disconnect_peer/2,
-         active_peers/1,
-         worker_id/2
-        ]).
+    start_link/2,
+    add_peer/2,
+    pick_peer/2,
+    remove_peer/2,
+    connect_peer/2,
+    disconnect_peer/2,
+    active_peers/1,
+    worker_id/2
+]).
 
 %% gen_server callbacks
 -export([
-         init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2
-        ]).
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2
+]).
 
--record(state,
-        {
-         port
-        }).
-
+-record(state, {
+    port
+}).
 
 %%%===================================================================
 %%% API
@@ -56,7 +54,6 @@ active_peers(Port) ->
 worker_id(Port, Name) ->
     gproc_pool:worker_id(Port, Name).
 
-
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -64,12 +61,14 @@ worker_id(Port, Name) ->
 init([Port, PeerLimit]) ->
     process_flag(trap_exit, true),
     true = gproc:reg({n, l, {enet_pool, Port}}),
-    try gproc_pool:new(Port, direct, [{size, PeerLimit}, {auto_size, false}]) of
+    try
+        gproc_pool:new(Port, direct, [{size, PeerLimit}, {auto_size, false}])
+    of
         ok -> ok
     catch
         error:exists -> ok
     end,
-    {ok, #state{ port = Port }}.
+    {ok, #state{port = Port}}.
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -81,10 +80,9 @@ handle_cast(_Request, State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, #state{ port = Port }) ->
+terminate(_Reason, #state{port = Port}) ->
     gproc_pool:force_delete(Port),
     ok.
-
 
 %%%===================================================================
 %%% Internal functions

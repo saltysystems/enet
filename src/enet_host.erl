@@ -7,39 +7,37 @@
 
 %% API
 -export([
-         start_link/3,
-         socket_options/0,
-         give_socket/2,
-         connect/4,
-         send_outgoing_commands/4,
-         send_outgoing_commands/5,
-         get_port/1,
-         get_incoming_bandwidth/1,
-         get_outgoing_bandwidth/1,
-         get_mtu/1,
-         get_channel_limit/1
-        ]).
+    start_link/3,
+    socket_options/0,
+    give_socket/2,
+    connect/4,
+    send_outgoing_commands/4,
+    send_outgoing_commands/5,
+    get_port/1,
+    get_incoming_bandwidth/1,
+    get_outgoing_bandwidth/1,
+    get_mtu/1,
+    get_channel_limit/1
+]).
 
 %% gen_server callbacks
 -export([
-         init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3
-        ]).
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
--record(state,
-        {
-         socket,
-         compress_fun,
-         decompress_fun,
-         connect_fun
-        }).
+-record(state, {
+    socket,
+    compress_fun,
+    decompress_fun,
+    connect_fun
+}).
 
 -define(NULL_PEER_ID, ?MAX_PEER_ID).
-
 
 %%%===================================================================
 %%% API
@@ -62,7 +60,9 @@ send_outgoing_commands(Host, Commands, IP, Port) ->
     send_outgoing_commands(Host, Commands, IP, Port, ?NULL_PEER_ID).
 
 send_outgoing_commands(Host, Commands, IP, Port, PeerID) ->
-    gen_server:call(Host, {send_outgoing_commands, Commands, IP, Port, PeerID}).
+    gen_server:call(
+        Host, {send_outgoing_commands, Commands, IP, Port, PeerID}
+    ).
 
 get_port(Host) ->
     gproc:get_value({p, l, port}, Host).
@@ -79,7 +79,6 @@ get_mtu(Host) ->
 get_channel_limit(Host) ->
     gproc:get_value({p, l, channel_limit}, Host).
 
-
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -89,33 +88,36 @@ init({AssignedPort, ConnectFun, Options}) ->
     ChannelLimit =
         case lists:keyfind(channel_limit, 1, Options) of
             {channel_limit, CLimit} -> CLimit;
-            false                   -> ?MIN_CHANNEL_COUNT
+            false -> ?MIN_CHANNEL_COUNT
         end,
     IncomingBandwidth =
         case lists:keyfind(incoming_bandwidth, 1, Options) of
             {incoming_bandwidth, IBandwidth} -> IBandwidth;
-            false                            -> 0
+            false -> 0
         end,
     OutgoingBandwidth =
         case lists:keyfind(outgoing_bandwidth, 1, Options) of
             {outgoing_bandwidth, OBandwidth} -> OBandwidth;
-            false                            -> 0
+            false -> 0
         end,
-    true = gproc:mreg(p, l,
-                      [
-                       {port, AssignedPort},
-                       {channel_limit, ChannelLimit},
-                       {incoming_bandwidth, IncomingBandwidth},
-                       {outgoing_bandwidth, OutgoingBandwidth},
-                       {mtu, ?HOST_DEFAULT_MTU}
-                      ]),
+    true = gproc:mreg(
+        p,
+        l,
+        [
+            {port, AssignedPort},
+            {channel_limit, ChannelLimit},
+            {incoming_bandwidth, IncomingBandwidth},
+            {outgoing_bandwidth, OutgoingBandwidth},
+            {mtu, ?HOST_DEFAULT_MTU}
+        ]
+    ),
     case gen_udp:open(AssignedPort, socket_options()) of
         {error, eaddrinuse} ->
             %%
             %% A socket has already been opened on this port
             %% - The socket will be given to us later
             %%
-            {ok, #state{ connect_fun = ConnectFun }};
+            {ok, #state{connect_fun = ConnectFun}};
         {ok, Socket} ->
             %%
             %% We were able to open a new socket on this port
@@ -123,9 +125,8 @@ init({AssignedPort, ConnectFun, Options}) ->
             %% - Set it to active mode
             %%
             ok = inet:setopts(Socket, [{active, true}]),
-            {ok, #state{ connect_fun = ConnectFun, socket = Socket }}
+            {ok, #state{connect_fun = ConnectFun, socket = Socket}}
     end.
-
 
 handle_call({connect, IP, Port, Channels}, _From, S) ->
     %%
@@ -135,30 +136,29 @@ handle_call({connect, IP, Port, Channels}, _From, S) ->
     %% - Start the peer process
     %%
     #state{
-       connect_fun = ConnectFun
-      } = S,
+        connect_fun = ConnectFun
+    } = S,
     Ref = make_ref(),
     LocalPort = get_port(self()),
     Reply =
         try enet_pool:add_peer(LocalPort, Ref) of
             PeerID ->
                 Peer = #enet_peer{
-                          handshake_flow = local,
-                          peer_id = PeerID,
-                          ip = IP,
-                          port = Port,
-                          name = Ref,
-                          host = self(),
-                          channels = Channels,
-                          connect_fun = ConnectFun
-                         },
+                    handshake_flow = local,
+                    peer_id = PeerID,
+                    ip = IP,
+                    port = Port,
+                    name = Ref,
+                    host = self(),
+                    channels = Channels,
+                    connect_fun = ConnectFun
+                },
                 start_peer(Peer)
         catch
             error:pool_full -> {error, reached_peer_limit};
-            error:exists    -> {error, exists}
+            error:exists -> {error, exists}
         end,
     {reply, Reply, S};
-
 handle_call({send_outgoing_commands, Commands, IP, Port, ID}, _From, S) ->
     %%
     %% Received outgoing commands from a peer.
@@ -170,13 +170,12 @@ handle_call({send_outgoing_commands, Commands, IP, Port, ID}, _From, S) ->
     %%
     SentTime = get_time(),
     PH = #protocol_header{
-            peer_id = ID,
-            sent_time = SentTime
-           },
+        peer_id = ID,
+        sent_time = SentTime
+    },
     Packet = [enet_protocol_encode:protocol_header(PH), Commands],
     ok = gen_udp:send(S#state.socket, IP, Port, Packet),
     {reply, {sent_time, SentTime}, S}.
-
 
 %%%
 %%% handle_cast
@@ -184,11 +183,9 @@ handle_call({send_outgoing_commands, Commands, IP, Port, ID}, _From, S) ->
 
 handle_cast({give_socket, Socket}, S) ->
     ok = inet:setopts(Socket, [{active, true}]),
-    {noreply, S#state{ socket = Socket }};
-
+    {noreply, S#state{socket = Socket}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
-
 
 %%%
 %%% handle_info
@@ -203,18 +200,18 @@ handle_info({udp, Socket, IP, Port, Packet}, S) ->
     %% - Send the packet to the peer (ID in protocol header)
     %%
     #state{
-       socket = Socket,
-       decompress_fun = Decompress,
-       connect_fun = ConnectFun
-      } = S,
+        socket = Socket,
+        decompress_fun = Decompress,
+        connect_fun = ConnectFun
+    } = S,
     %% TODO: Replace call to enet_protocol_decode with binary pattern match.
     {ok,
-     #protocol_header{
-        compressed = IsCompressed,
-        peer_id = RecipientPeerID,
-        sent_time = SentTime
-       },
-     Rest} = enet_protocol_decode:protocol_header(Packet),
+        #protocol_header{
+            compressed = IsCompressed,
+            peer_id = RecipientPeerID,
+            sent_time = SentTime
+        },
+        Rest} = enet_protocol_decode:protocol_header(Packet),
     Commands =
         case IsCompressed of
             0 -> Rest;
@@ -229,29 +226,30 @@ handle_info({udp, Socket, IP, Port, Packet}, S) ->
             try enet_pool:add_peer(LocalPort, Ref) of
                 PeerID ->
                     Peer = #enet_peer{
-                              handshake_flow = remote,
-                              peer_id = PeerID,
-                              ip = IP,
-                              port = Port,
-                              name = Ref,
-                              host = self(),
-                              connect_fun = ConnectFun
-                             },
+                        handshake_flow = remote,
+                        peer_id = PeerID,
+                        ip = IP,
+                        port = Port,
+                        name = Ref,
+                        host = self(),
+                        connect_fun = ConnectFun
+                    },
                     {ok, Pid} = start_peer(Peer),
                     enet_peer:recv_incoming_packet(Pid, IP, SentTime, Commands)
             catch
                 error:pool_full -> {error, reached_peer_limit};
-                error:exists    -> {error, exists}
+                error:exists -> {error, exists}
             end;
         PeerID ->
             case enet_pool:pick_peer(LocalPort, PeerID) of
-                false -> ok; %% Unknown peer - drop the packet
+                %% Unknown peer - drop the packet
+                false ->
+                    ok;
                 Pid ->
                     enet_peer:recv_incoming_packet(Pid, IP, SentTime, Commands)
             end
     end,
     {noreply, S};
-
 handle_info({gproc, unreg, _Ref, {n, l, {enet_peer, Ref}}}, S) ->
     %%
     %% A Peer process has exited.
@@ -262,14 +260,12 @@ handle_info({gproc, unreg, _Ref, {n, l, {enet_peer, Ref}}}, S) ->
     true = enet_pool:remove_peer(LocalPort, Ref),
     {noreply, S}.
 
-
 %%%
 %%% terminate
 %%%
 
 terminate(_Reason, S) ->
     ok = gen_udp:close(S#state.socket).
-
 
 %%%
 %%% code_change
@@ -278,7 +274,6 @@ terminate(_Reason, S) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -286,7 +281,7 @@ code_change(_OldVsn, State, _Extra) ->
 get_time() ->
     erlang:system_time(1000) band 16#FFFF.
 
-start_peer(Peer = #enet_peer{ name = Ref }) ->
+start_peer(Peer = #enet_peer{name = Ref}) ->
     LocalPort = gproc:get_value({p, l, port}, self()),
     PeerSup = gproc:where({n, l, {enet_peer_sup, LocalPort}}),
     {ok, Pid} = enet_peer_sup:start_peer(PeerSup, Peer),

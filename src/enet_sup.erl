@@ -3,16 +3,15 @@
 
 %% API
 -export([
-         start_link/0,
-         start_host_supervisor/3,
-         stop_host_supervisor/1
-        ]).
+    start_link/0,
+    start_host_supervisor/3,
+    stop_host_supervisor/1
+]).
 
 %% Supervisor callbacks
--export([ init/1 ]).
+-export([init/1]).
 
 -define(SERVER, ?MODULE).
-
 
 %%%===================================================================
 %%% API functions
@@ -23,18 +22,17 @@ start_link() ->
 
 start_host_supervisor(Port, ConnectFun, Options) ->
     Child = #{
-      id => Port,
-      start => {enet_host_sup, start_link, [Port, ConnectFun, Options]},
-      restart => temporary,
-      shutdown => infinity,
-      type => supervisor,
-      modules => [enet_host_sup]
-     },
+        id => Port,
+        start => {enet_host_sup, start_link, [Port, ConnectFun, Options]},
+        restart => temporary,
+        shutdown => infinity,
+        type => supervisor,
+        modules => [enet_host_sup]
+    },
     supervisor:start_child(?MODULE, Child).
 
 stop_host_supervisor(HostSup) ->
     supervisor:terminate_child(?MODULE, HostSup).
-
 
 %%%===================================================================
 %%% Supervisor callbacks
@@ -42,12 +40,11 @@ stop_host_supervisor(HostSup) ->
 
 init([]) ->
     SupFlags = #{
-      strategy => one_for_one,
-      intensity => 1,
-      period => 5
-     },
+        strategy => one_for_one,
+        intensity => 1,
+        period => 5
+    },
     {ok, {SupFlags, []}}.
-
 
 %%%===================================================================
 %%% Internal functions
