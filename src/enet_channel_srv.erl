@@ -198,6 +198,19 @@ dispatch(CurSeq, Window, ChannelID, Worker) ->
     SortedWindow = lists:sort(Window),
     dispatch(CurSeq, SortedWindow, ChannelID, Worker, 0).
 
+dispatch(CurSeq, [], _ChannelID, _Worker, _Count) ->
+    {CurSeq+1,[]};
+dispatch(CurSeq, Window = [ {Seq1, D1} ], ChannelID, Worker, Count) ->
+    case CurSeq + 1 == Seq1 of 
+        true -> 
+            % Dispatch the packet
+            Worker ! {enet, ChannelID, D1};
+        _ ->
+            % The first packet in the window is not the one we're looking for,
+            % so just return.
+            logger:debug("Dispatched ~p packets", Count),
+            {CurSeq + 1, Window}
+    end;
 dispatch(CurSeq, Window = [ {Seq1, D1} | RemainingWindow ], ChannelID, Worker, Count) -> 
     % If the buffered item comes immediately after the current sequence number,
     % dispatch the next packet. 
