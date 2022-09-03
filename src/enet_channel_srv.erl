@@ -204,7 +204,9 @@ dispatch(CurSeq, Window = [ {Seq1, D1} ], ChannelID, Worker, Count) ->
     case CurSeq + 1 == Seq1 of 
         true -> 
             % Dispatch the packet
-            Worker ! {enet, ChannelID, D1};
+            Worker ! {enet, ChannelID, D1},
+            % Return the next sequence number and the now-empty window.
+            {CurSeq + 1, []};
         _ ->
             % The first packet in the window is not the one we're looking for,
             % so just return.
