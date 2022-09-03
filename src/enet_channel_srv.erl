@@ -161,6 +161,9 @@ handle_cast(
     {noreply, S0};
 handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, C = #reliable{}}}, S0) ->
     logger:debug("Got reliable packet newer than we expected, buffer"),
+    Window = S0#state.reliable_window,
+    Expect = S0#state.incoming_reliable_sequence_number,
+    logger:debug("Got: ~p. Expect: ~p. Window contents: ~p", [N, Expect, Window]),
     ReliableWindow0 = S0#state.reliable_window,
     S1 = S0#state{reliable_window = [{N, C} | ReliableWindow0]},
     {noreply, S1};
