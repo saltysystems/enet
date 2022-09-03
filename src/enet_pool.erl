@@ -61,9 +61,7 @@ worker_id(Port, Name) ->
 init([Port, PeerLimit]) ->
     process_flag(trap_exit, true),
     true = gproc:reg({n, l, {enet_pool, Port}}),
-    try
-        gproc_pool:new(Port, direct, [{size, PeerLimit}, {auto_size, false}])
-    of
+    try gproc_pool:new(Port, direct, [{size, PeerLimit}, {auto_size, false}]) of
         ok -> ok
     catch
         error:exists -> ok
