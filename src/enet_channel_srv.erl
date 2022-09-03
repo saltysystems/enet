@@ -208,7 +208,7 @@ dispatch(CurSeq, Window = [ {Seq1, D1} ], ChannelID, Worker, Count) ->
         _ ->
             % The first packet in the window is not the one we're looking for,
             % so just return.
-            logger:debug("Dispatched ~p packets", Count),
+            logger:debug("Dispatched ~p packets", [Count]),
             {CurSeq + 1, Window}
     end;
 dispatch(CurSeq, Window = [ {Seq1, D1} | RemainingWindow ], ChannelID, Worker, Count) -> 
@@ -226,12 +226,12 @@ dispatch(CurSeq, Window = [ {Seq1, D1} | RemainingWindow ], ChannelID, Worker, C
                     dispatch(CurSeq+1, RemainingWindow, ChannelID, Worker, Count+1);
                 false ->
                     % Just return the existing sequence number. Nothing to do here.
-                    logger:debug("Dispatched ~p packets", Count),
+                    logger:debug("Dispatched ~p packets", [Count]),
                     {CurSeq + 1, RemainingWindow}
             end;
         _ ->
             % The first packet in the window is not the one we're looking for,
             % so just return.
-            logger:debug("Dispatched ~p packets", Count),
+            logger:debug("Dispatched ~p packets", [Count]),
             {CurSeq + 1, Window}
     end.
