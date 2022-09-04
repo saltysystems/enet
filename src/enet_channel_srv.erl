@@ -26,7 +26,10 @@
     code_change/3
 ]).
 
--define(MAX_SEQ_INDEX, 65536).
+% enet_uint16 ENetPeer::outgoingReliableSequenceNumber 
+-define(ENET_MAX_SEQ_INDEX, 65536).
+% ENET_PEER_RELIABLE_WINDOW_SIZE = 0x1000,
+-define(ENET_PEER_RELIABLE_WINDOW_SIZE, 16#1000).
 
 % records
 -record(state, {
@@ -155,7 +158,8 @@ handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, _C =
     Expect = S0#state.incoming_reliable_sequence_number,
     logger:debug("Discard outdated packet. Recv: ~p. Expect: ~p", [N, Expect]),
     {noreply, S0};
-handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, C = #reliable{}}}, S0) ->
+handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, C = #reliable{}}}, S0) when 
+    length(N) < ?ENET_PEER_RELIABLE_WINDOW_SIZE  ->
     Expect = S0#state.incoming_reliable_sequence_number,
     logger:debug("Buffer ahead-of-sequence packet. Recv: ~p. Expect: ~p.", [N, Expect]),
     ReliableWindow0 = S0#state.reliable_window,
@@ -210,4 +214,4 @@ dispatch(CurSeq, Window = [{Seq1, D1} | RemainingWindow], ChannelID, Worker) ->
 
 next(Seq) ->
     % Must wrap at 16-bits.
-    (Seq + 1) rem ?MAX_SEQ_INDEX.
+    (Seq + 1) rem ?ENET_MAX_SEQ_INDEX.
