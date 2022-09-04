@@ -1,6 +1,9 @@
 # enet
 A complete re-implementation of the [ENet](http://enet.bespin.org/) protocol in Erlang/OTP.
 
+*NOTE*: This is a friendly fork of https://github.com/flambard/enet. This fork is being 
+tested against and adapted to the C implementation of ENet as used by the Godot engine. 
+
 ## API
 The module `enet` presents the API of enet.
 
