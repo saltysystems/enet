@@ -157,7 +157,7 @@ handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, _C =
     {noreply, S0};
 handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, C = #reliable{}}}, S0) ->
     Expect = S0#state.incoming_reliable_sequence_number,
-    logger:debug("Buffer unexpectedly new packet. Recv: ~p. Expect: ~p.", [N, Expect]),
+    logger:debug("Buffer ahead-of-sequence packet. Recv: ~p. Expect: ~p.", [N, Expect]),
     ReliableWindow0 = S0#state.reliable_window,
     S1 = S0#state{reliable_window = [{N, C} | ReliableWindow0]},
     {noreply, S1};
