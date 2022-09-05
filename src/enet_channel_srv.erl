@@ -131,48 +131,45 @@ handle_cast({send_unreliable, Data}, S0) ->
     N = S0#state.outgoing_unreliable_sequence_number,
     {H, C} = enet_command:send_unreliable(ID, N, Data),
     ok = enet_peer:send_command(Peer, {H, C}),
-    S1 = S0#state{outgoing_reliable_sequence_number = next(N)},
+    S1 = S0#state{outgoing_reliable_sequence_number = maybe_wrap(N + 1)},
     {noreply, S1};
-handle_cast(
-    {recv_reliable, {
-        #command_header{reliable_sequence_number = N}, C = #reliable{}
-    }},
-    S0
-) when
-    N =:= S0#state.incoming_reliable_sequence_number
+handle_cast({recv_reliable, _Data}, S0 = #state{reliable_window = W}) when
+    length(W) > ?ENET_PEER_RELIABLE_WINDOW_SIZE
 ->
-    ID = S0#state.id,
-    % Dispatch this packet
-    Worker = S0#state.worker,
-    Worker ! {enet, ID, C},
-    % Dispatch any buffered packets
-    Window = S0#state.reliable_window,
-    SortedWindow = lists:keysort(1, Window),
-    {NextSeq, NewWindow} = dispatch(N, SortedWindow, ID, Worker),
-    S1 = S0#state{incoming_reliable_sequence_number = NextSeq, reliable_window = NewWindow},
-    {noreply, S1};
-handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, _C = #reliable{}}}, S0) when
-    N <
-        S0#state.incoming_reliable_sequence_number
-->
-    Expect = S0#state.incoming_reliable_sequence_number,
-    logger:debug("Discard outdated packet. Recv: ~p. Expect: ~p", [N, Expect]),
-    {noreply, S0};
-handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, C = #reliable{}}}, S0 = #state{reliable_window = W}) when
-    length(W) < ?ENET_PEER_RELIABLE_WINDOW_SIZE
-->
-    Expect = S0#state.incoming_reliable_sequence_number,
-    logger:debug("Buffer ahead-of-sequence packet. Recv: ~p. Expect: ~p.", [N, Expect]),
-    ReliableWindow0 = S0#state.reliable_window,
-    S1 = S0#state{reliable_window = [{N, C} | ReliableWindow0]},
-    {noreply, S1};
+    {stop, out_of_sync, S0};
+handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, C = #reliable{}}}, S0) ->
+    Expected = maybe_wrap(S0#state.incoming_reliable_sequence_number),
+    Next = maybe_wrap(N),
+    if
+        Next > Expected ->
+            Expect = S0#state.incoming_reliable_sequence_number,
+            logger:debug("Buffer ahead-of-sequence packet. Recv: ~p. Expect: ~p.", [N, Expect]),
+            ReliableWindow0 = S0#state.reliable_window,
+            S1 = S0#state{reliable_window = [{N, C} | ReliableWindow0]},
+            {noreply, S1};
+        Next < Expected ->
+            Expect = S0#state.incoming_reliable_sequence_number,
+            logger:debug("Discard outdated packet. Recv: ~p. Expect: ~p", [N, Expect]),
+            {noreply, S0};
+        true ->
+            ID = S0#state.id,
+            % Dispatch this packet
+            Worker = S0#state.worker,
+            Worker ! {enet, ID, C},
+            % Dispatch any buffered packets
+            Window = S0#state.reliable_window,
+            SortedWindow = lists:keysort(1, Window),
+            {NextSeq, NewWindow} = dispatch(N, SortedWindow, ID, Worker),
+            S1 = S0#state{incoming_reliable_sequence_number = NextSeq, reliable_window = NewWindow},
+            {noreply, S1}
+    end;
 handle_cast({send_reliable, Data}, S0) ->
     ID = S0#state.id,
     Peer = S0#state.peer,
     N = S0#state.outgoing_reliable_sequence_number,
     {H, C} = enet_command:send_reliable(ID, N, Data),
     ok = enet_peer:send_command(Peer, {H, C}),
-    S1 = S0#state{outgoing_reliable_sequence_number = next(N)},
+    S1 = S0#state{outgoing_reliable_sequence_number = maybe_wrap(N + 1)},
     {noreply, S1};
 handle_cast(Msg, S0) ->
     logger:debug("Unhandled message: ~p", [Msg]),
@@ -195,12 +192,12 @@ code_change(_OldVsn, S0, _Extra) ->
 -spec dispatch(pos_integer(), list(), pos_integer(), pid()) ->
     {pos_integer(), list()}.
 dispatch(CurSeq, [], _ChannelID, _Worker) ->
-    NextSeq = next(CurSeq),
+    NextSeq = maybe_wrap(CurSeq + 1),
     {NextSeq, []};
 dispatch(CurSeq, Window = [{Seq1, D1} | RemainingWindow], ChannelID, Worker) ->
     % If the buffered item comes immediately after the current sequence number,
     % dispatch the next packet.
-    NextSeq = next(CurSeq),
+    NextSeq = maybe_wrap(CurSeq + 1),
     case NextSeq == Seq1 of
         true ->
             % Dispatch the packet
@@ -213,6 +210,6 @@ dispatch(CurSeq, Window = [{Seq1, D1} | RemainingWindow], ChannelID, Worker) ->
             {NextSeq, Window}
     end.
 
-next(Seq) ->
+maybe_wrap(Seq) ->
     % Must wrap at 16-bits.
-    (Seq + 1) rem ?ENET_MAX_SEQ_INDEX.
+    (Seq) rem ?ENET_MAX_SEQ_INDEX.
