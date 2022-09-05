@@ -138,16 +138,15 @@ handle_cast({recv_reliable, _Data}, S0 = #state{reliable_window = W}) when
 ->
     {stop, out_of_sync, S0};
 handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, C = #reliable{}}}, S0) ->
-    Expected = maybe_wrap(S0#state.incoming_reliable_sequence_number),
-    Next = maybe_wrap(N),
+    Expected = S0#state.incoming_reliable_sequence_number,
     if
-        Next > Expected ->
+        N > Expected ->
             Expect = S0#state.incoming_reliable_sequence_number,
             logger:debug("Buffer ahead-of-sequence packet. Recv: ~p. Expect: ~p.", [N, Expect]),
             ReliableWindow0 = S0#state.reliable_window,
             S1 = S0#state{reliable_window = [{N, C} | ReliableWindow0]},
             {noreply, S1};
-        Next < Expected ->
+        N < Expected ->
             Expect = S0#state.incoming_reliable_sequence_number,
             logger:debug("Discard outdated packet. Recv: ~p. Expect: ~p", [N, Expect]),
             {noreply, S0};
@@ -158,7 +157,7 @@ handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, C = 
             Worker ! {enet, ID, C},
             % Dispatch any buffered packets
             Window = S0#state.reliable_window,
-            SortedWindow = lists:keysort(1, Window),
+            SortedWindow = wrapped_sort(Window),
             {NextSeq, NewWindow} = dispatch(N, SortedWindow, ID, Worker),
             S1 = S0#state{incoming_reliable_sequence_number = NextSeq, reliable_window = NewWindow},
             {noreply, S1}
@@ -213,3 +212,18 @@ dispatch(CurSeq, Window = [{Seq1, D1} | RemainingWindow], ChannelID, Worker) ->
 maybe_wrap(Seq) ->
     % Must wrap at 16-bits.
     (Seq) rem ?ENET_MAX_SEQ_INDEX.
+
+wrapped_sort(List) ->
+    % Keysort while preserving order through 16-bit integer wrapping.
+    F = fun({A,_},{B,_}) ->
+            Compare = B - A,
+            if
+                Compare > 0, Compare =< ?ENET_MAX_SEQ_INDEX/2 ->
+                    true;
+                Compare < 0, Compare =< -?ENET_MAX_SEQ_INDEX/2 ->
+                    true;
+                true ->
+                    false
+            end
+        end,
+    lists:sort(F,List).
