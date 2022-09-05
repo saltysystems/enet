@@ -42,7 +42,6 @@
     outgoing_unreliable_sequence_number = 1,
     %% reliableWindows [ENET_PEER_RELIABLE_WINDOWS] (uint16 * 16 = 32 bytes)
     reliable_window = [],
-    unreliable_window = [],
     sys_parent,
     sys_debug
 }).
@@ -116,25 +115,16 @@ handle_cast({send_unsequenced, Data}, S0) ->
 handle_cast({recv_unreliable, {#command_header{}, C = #unreliable{sequence_number = N}}}, S0) ->
     Expected = S0#state.incoming_unreliable_sequence_number,
     if
-        N =:= Expected ->
-            Worker = S0#state.worker,
-            ID = S0#state.id,
-            Worker ! {enet, ID, C},
-            % Dispatch any buffered packets
-            Window = S0#state.unreliable_window,
-            SortedWindow = wrapped_sort(Window),
-            {NextSeq, NewWindow} = unreliable_dispatch(N, SortedWindow, ID, Worker),
-            S1 = S0#state{incoming_unreliable_sequence_number = NextSeq, unreliable_window = NewWindow},
-            {noreply, S1};
         % The guard is a bit complex because we need to account for wrapped
         % sequence numbers. Examples:
         % N = 5, Expected = 4. -> 5-4 = 1.
         % N = 1, Expected = 65534 -> 1 - 65534 = -65533. 
-        N > Expected; N - Expected =< -?ENET_MAX_SEQ_INDEX/2  ->
-            %% Data is newer than expected - buffer it 
-            logger:debug("Buffer ahead-of-sequence packet. Recv: ~p. Expect: ~p.", [N, Expected]),
-            UnreliableWindow0 = S0#state.unreliable_window,
-            S1 = S0#state{unreliable_window = [ {N, C} | UnreliableWindow0 ]}, 
+        N >= Expected; N - Expected =< -?ENET_MAX_SEQ_INDEX/2  ->
+            Worker = S0#state.worker,
+            ID = S0#state.id,
+            Worker ! {enet, ID, C},
+            NextSeq = maybe_wrap(N+1),
+            S1 = S0#state{incoming_unreliable_sequence_number = NextSeq},
             {noreply, S1};
         % Examples:
         % N = 4, Expected = 5. -> 4-5 = -1 
@@ -170,7 +160,7 @@ handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, C = 
             % Dispatch any buffered packets
             Window = S0#state.reliable_window,
             SortedWindow = wrapped_sort(Window),
-            {NextSeq, NewWindow} = reliable_dispatch(N, SortedWindow, ID, Worker),
+            {NextSeq, NewWindow} = dispatch(N, SortedWindow, ID, Worker),
             S1 = S0#state{incoming_reliable_sequence_number = NextSeq, reliable_window = NewWindow},
             {noreply, S1};
         % The guard is a bit complex because we need to account for wrapped
@@ -218,12 +208,12 @@ code_change(_OldVsn, S0, _Extra) ->
 % Internal
 %
 
--spec reliable_dispatch(pos_integer(), list(), pos_integer(), pid()) ->
+-spec dispatch(pos_integer(), list(), pos_integer(), pid()) ->
     {pos_integer(), list()}.
-reliable_dispatch(CurSeq, [], _ChannelID, _Worker) ->
+dispatch(CurSeq, [], _ChannelID, _Worker) ->
     NextSeq = maybe_wrap(CurSeq + 1),
     {NextSeq, []};
-reliable_dispatch(CurSeq, Window = [{Seq1, D1} | RemainingWindow], ChannelID, Worker) ->
+dispatch(CurSeq, Window = [{Seq1, D1} | RemainingWindow], ChannelID, Worker) ->
     % If the buffered item comes immediately after the current sequence number,
     % dispatch the next packet.
     NextSeq = maybe_wrap(CurSeq + 1),
@@ -232,25 +222,12 @@ reliable_dispatch(CurSeq, Window = [{Seq1, D1} | RemainingWindow], ChannelID, Wo
             % Dispatch the packet
             logger:debug("Dispatching queued packet ~p", [Seq1]),
             Worker ! {enet, ChannelID, D1},
-            reliable_dispatch(NextSeq, RemainingWindow, ChannelID, Worker);
+            dispatch(NextSeq, RemainingWindow, ChannelID, Worker);
         _ ->
             % The first packet in the window is not the one we're looking for,
             % so just return.
             {NextSeq, Window}
     end.
-
--spec unreliable_dispatch(pos_integer(), list(), pos_integer(), pid()) ->
-    {pos_integer(), list()}.
-unreliable_dispatch(CurSeq, [], _ChannelID, _Worker) ->
-    % Nothing left to dispatch
-    NextSeq = maybe_wrap(CurSeq + 1),
-    {NextSeq, []};
-unreliable_dispatch(CurSeq, [{Seq1, D1} | RemainingWindow], ChannelID, Worker) ->
-    % Dispatch the next packet, assuming the window is already sorted.
-    NextSeq = maybe_wrap(CurSeq + 1),
-    logger:debug("Dispatching queued packet ~p", [Seq1]),
-    Worker ! {enet, ChannelID, D1},
-    unreliable_dispatch(NextSeq, RemainingWindow, ChannelID, Worker).
 
 maybe_wrap(Seq) ->
     % Must wrap at 16-bits.
