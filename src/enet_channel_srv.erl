@@ -37,7 +37,7 @@
     peer,
     worker,
     incoming_reliable_sequence_number = 1,
-    incoming_unreliable_sequence_number = 0,
+    incoming_unreliable_sequence_number = 1,
     outgoing_reliable_sequence_number = 1,
     outgoing_unreliable_sequence_number = 1,
     %% reliableWindows [ENET_PEER_RELIABLE_WINDOWS] (uint16 * 16 = 32 bytes)
