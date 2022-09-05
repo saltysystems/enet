@@ -215,15 +215,15 @@ maybe_wrap(Seq) ->
 
 wrapped_sort(List) ->
     % Keysort while preserving order through 16-bit integer wrapping.
-    F = fun({A,_},{B,_}) ->
-            Compare = B - A,
-            if
-                Compare > 0, Compare =< ?ENET_MAX_SEQ_INDEX/2 ->
-                    true;
-                Compare < 0, Compare =< -?ENET_MAX_SEQ_INDEX/2 ->
-                    true;
-                true ->
-                    false
-            end
-        end,
-    lists:sort(F,List).
+    F = fun({A, _}, {B, _}) ->
+        Compare = B - A,
+        if
+            Compare > 0, Compare =< ?ENET_MAX_SEQ_INDEX / 2 ->
+                true;
+            Compare < 0, Compare =< -?ENET_MAX_SEQ_INDEX / 2 ->
+                true;
+            true ->
+                false
+        end
+    end,
+    lists:sort(F, List).
