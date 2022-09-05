@@ -117,16 +117,6 @@ handle_cast({recv_unreliable, {#command_header{}, C = #unreliable{sequence_numbe
     if
         % The guard is a bit complex because we need to account for wrapped
         % sequence numbers. Examples:
-        % N = 5, Expected = 4. -> 5-4 = 1.
-        % N = 1, Expected = 65534 -> 1 - 65534 = -65533. 
-        N >= Expected; N - Expected =< -?ENET_MAX_SEQ_INDEX/2  ->
-            Worker = S0#state.worker,
-            ID = S0#state.id,
-            Worker ! {enet, ID, C},
-            NextSeq = maybe_wrap(N+1),
-            S1 = S0#state{incoming_unreliable_sequence_number = NextSeq},
-            {noreply, S1};
-        % Examples:
         % N = 4, Expected = 5. -> 4-5 = -1 
         % N = 65535, Expected 2. -> 65535-2 = 65533.
         N < Expected; N - Expected >= ?ENET_MAX_SEQ_INDEX/2  ->
@@ -135,7 +125,12 @@ handle_cast({recv_unreliable, {#command_header{}, C = #unreliable{sequence_numbe
             {noreply, S0};
         % We should crash if no conditions are satisfied
         true ->
-            {stop, unexpected}
+            Worker = S0#state.worker,
+            ID = S0#state.id,
+            Worker ! {enet, ID, C},
+            NextSeq = maybe_wrap(N+1),
+            S1 = S0#state{incoming_unreliable_sequence_number = NextSeq},
+            {noreply, S1};
     end;
 handle_cast({send_unreliable, Data}, S0) ->
     ID = S0#state.id,
@@ -152,17 +147,6 @@ handle_cast({recv_reliable, _Data}, S0 = #state{reliable_window = W}) when
 handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, C = #reliable{}}}, S0) ->
     Expected = S0#state.incoming_reliable_sequence_number,
     if
-        N =:= Expected ->
-            ID = S0#state.id,
-            % Dispatch this packet
-            Worker = S0#state.worker,
-            Worker ! {enet, ID, C},
-            % Dispatch any buffered packets
-            Window = S0#state.reliable_window,
-            SortedWindow = wrapped_sort(Window),
-            {NextSeq, NewWindow} = dispatch(N, SortedWindow, ID, Worker),
-            S1 = S0#state{incoming_reliable_sequence_number = NextSeq, reliable_window = NewWindow},
-            {noreply, S1};
         % The guard is a bit complex because we need to account for wrapped
         % sequence numbers. Examples:
         % N = 5, Expected = 4. -> 5-4 = 1.
@@ -178,9 +162,18 @@ handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, C = 
         N < Expected; N - Expected >= ?ENET_MAX_SEQ_INDEX/2  ->
             logger:debug("Discard outdated packet. Recv: ~p. Expect: ~p", [N, Expected]),
             {noreply, S0};
-        % We should crash if no conditions are satisfied
+        % Must be equal, and so dispatch:
         true ->
-            {stop, unexpected}
+            ID = S0#state.id,
+            % Dispatch this packet
+            Worker = S0#state.worker,
+            Worker ! {enet, ID, C},
+            % Dispatch any buffered packets
+            Window = S0#state.reliable_window,
+            SortedWindow = wrapped_sort(Window),
+            {NextSeq, NewWindow} = dispatch(N, SortedWindow, ID, Worker),
+            S1 = S0#state{incoming_reliable_sequence_number = NextSeq, reliable_window = NewWindow},
+            {noreply, S1};
     end;
 handle_cast({send_reliable, Data}, S0) ->
     ID = S0#state.id,
