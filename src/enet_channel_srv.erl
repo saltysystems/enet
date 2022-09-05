@@ -130,7 +130,7 @@ handle_cast({recv_unreliable, {#command_header{}, C = #unreliable{sequence_numbe
             Worker ! {enet, ID, C},
             NextSeq = maybe_wrap(N+1),
             S1 = S0#state{incoming_unreliable_sequence_number = NextSeq},
-            {noreply, S1};
+            {noreply, S1}
     end;
 handle_cast({send_unreliable, Data}, S0) ->
     ID = S0#state.id,
@@ -173,7 +173,7 @@ handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, C = 
             SortedWindow = wrapped_sort(Window),
             {NextSeq, NewWindow} = dispatch(N, SortedWindow, ID, Worker),
             S1 = S0#state{incoming_reliable_sequence_number = NextSeq, reliable_window = NewWindow},
-            {noreply, S1};
+            {noreply, S1}
     end;
 handle_cast({send_reliable, Data}, S0) ->
     ID = S0#state.id,
