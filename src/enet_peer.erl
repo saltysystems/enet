@@ -291,6 +291,7 @@ connecting(cast, {incoming_command, {H, C = #acknowledge{}}}, S) ->
     CanceledTimeout = cancel_resend_timer(ChannelID, SentTime, SequenceNumber),
     {next_state, acknowledging_verify_connect, S, [CanceledTimeout]};
 connecting({timeout, {_ChannelID, _SentTime, _SequenceNumber}}, _, S) ->
+    logger:debug("connection timeout"),
     {stop, timeout, S};
 connecting(EventType, EventContent, S) ->
     handle_event(EventType, EventContent, S).
@@ -372,6 +373,7 @@ acknowledging_connect(cast, {incoming_command, {_H, C = #connect{}}}, S) ->
     },
     {next_state, verifying_connect, NewS, [VerifyConnectTimeout]};
 acknowledging_connect({timeout, {_ChannelID, _SentTime, _SequenceNr}}, _, S) ->
+    logger:debug("acknoledgment timeout"),
     {stop, timeout, S};
 acknowledging_connect(EventType, EventContent, S) ->
     handle_event(EventType, EventContent, S).
@@ -759,6 +761,7 @@ connected({timeout, recv}, ping, S) ->
     %%
     %% - Stop
     %%
+    logger:debug("ping timeout"),
     {stop, timeout, S};
 connected({timeout, send}, ping, S) ->
     %%

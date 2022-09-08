@@ -37,7 +37,7 @@
     peer,
     worker,
     incoming_reliable_sequence_number = 1,
-    incoming_unreliable_sequence_number = 0,
+    incoming_unreliable_sequence_number = 1,
     outgoing_reliable_sequence_number = 1,
     outgoing_unreliable_sequence_number = 1,
     %% reliableWindows [ENET_PEER_RELIABLE_WINDOWS] (uint16 * 16 = 32 bytes)
@@ -113,18 +113,23 @@ handle_cast({send_unsequenced, Data}, S0) ->
     ok = enet_peer:send_command(Peer, {H, C}),
     {noreply, S0};
 handle_cast({recv_unreliable, {#command_header{}, C = #unreliable{sequence_number = N}}}, S0) ->
-    Worker = S0#state.worker,
-    ID = S0#state.id,
-    S1 =
-        if
-            N < S0#state.incoming_unreliable_sequence_number ->
-                %% Data is old - drop it and continue.
-                S0;
-            true ->
-                Worker ! {enet, ID, C},
-                S0#state{incoming_unreliable_sequence_number = N}
-        end,
-    {noreply, S1};
+    Expected = S0#state.incoming_unreliable_sequence_number,
+    if
+        % The guard is more complex because we need to account for wrapped
+        % sequence numbers. 
+        N < Expected; N - Expected >= ?ENET_MAX_SEQ_INDEX/2  ->
+            %% Data is old - drop it and continue.
+            logger:debug("Discard outdated packet. Recv: ~p. Expect: ~p", [N, Expected]),
+            {noreply, S0};
+        % N is equal to or greater than the expected packet. Dispatch it.
+        true ->
+            Worker = S0#state.worker,
+            ID = S0#state.id,
+            Worker ! {enet, ID, C},
+            NextSeq = maybe_wrap(N+1),
+            S1 = S0#state{incoming_unreliable_sequence_number = NextSeq},
+            {noreply, S1}
+    end;
 handle_cast({send_unreliable, Data}, S0) ->
     ID = S0#state.id,
     Peer = S0#state.peer,
@@ -140,16 +145,17 @@ handle_cast({recv_reliable, _Data}, S0 = #state{reliable_window = W}) when
 handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, C = #reliable{}}}, S0) ->
     Expected = S0#state.incoming_reliable_sequence_number,
     if
-        N > Expected ->
-            Expect = S0#state.incoming_reliable_sequence_number,
-            logger:debug("Buffer ahead-of-sequence packet. Recv: ~p. Expect: ~p.", [N, Expect]),
+        % These guards are more complex because we need to account for wrapped
+        % sequence numbers. 
+        N > Expected; N - Expected =< -?ENET_MAX_SEQ_INDEX/2  ->
+            logger:debug("Buffer ahead-of-sequence packet. Recv: ~p. Expect: ~p.", [N, Expected]),
             ReliableWindow0 = S0#state.reliable_window,
             S1 = S0#state{reliable_window = [{N, C} | ReliableWindow0]},
             {noreply, S1};
-        N < Expected ->
-            Expect = S0#state.incoming_reliable_sequence_number,
-            logger:debug("Discard outdated packet. Recv: ~p. Expect: ~p", [N, Expect]),
+        N < Expected; N - Expected >= ?ENET_MAX_SEQ_INDEX/2  ->
+            logger:debug("Discard outdated packet. Recv: ~p. Expect: ~p", [N, Expected]),
             {noreply, S0};
+        % Must be equal, and so dispatch:
         true ->
             ID = S0#state.id,
             % Dispatch this packet

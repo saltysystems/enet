@@ -26,7 +26,7 @@
     ConnectFun ::
         mfa()
         | fun((map()) -> {ok, pid()} | {error, term()}),
-    Options :: [{atom(), term()}]
+    Options :: [{atom(), term()}, ...]
 ) ->
     {ok, port_number()} | {error, term()}.
 
