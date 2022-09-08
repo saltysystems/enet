@@ -115,15 +115,13 @@ handle_cast({send_unsequenced, Data}, S0) ->
 handle_cast({recv_unreliable, {#command_header{}, C = #unreliable{sequence_number = N}}}, S0) ->
     Expected = S0#state.incoming_unreliable_sequence_number,
     if
-        % The guard is a bit complex because we need to account for wrapped
-        % sequence numbers. Examples:
-        % N = 4, Expected = 5. -> 4-5 = -1 
-        % N = 65535, Expected 2. -> 65535-2 = 65533.
+        % The guard is more complex because we need to account for wrapped
+        % sequence numbers. 
         N < Expected; N - Expected >= ?ENET_MAX_SEQ_INDEX/2  ->
             %% Data is old - drop it and continue.
             logger:debug("Discard outdated packet. Recv: ~p. Expect: ~p", [N, Expected]),
             {noreply, S0};
-        % We should crash if no conditions are satisfied
+        % N is equal to or greater than the expected packet. Dispatch it.
         true ->
             Worker = S0#state.worker,
             ID = S0#state.id,
@@ -147,18 +145,13 @@ handle_cast({recv_reliable, _Data}, S0 = #state{reliable_window = W}) when
 handle_cast({recv_reliable, {#command_header{reliable_sequence_number = N}, C = #reliable{}}}, S0) ->
     Expected = S0#state.incoming_reliable_sequence_number,
     if
-        % The guard is a bit complex because we need to account for wrapped
-        % sequence numbers. Examples:
-        % N = 5, Expected = 4. -> 5-4 = 1.
-        % N = 1, Expected = 65534 -> 1 - 65534 = -65533. 
+        % These guards are more complex because we need to account for wrapped
+        % sequence numbers. 
         N > Expected; N - Expected =< -?ENET_MAX_SEQ_INDEX/2  ->
             logger:debug("Buffer ahead-of-sequence packet. Recv: ~p. Expect: ~p.", [N, Expected]),
             ReliableWindow0 = S0#state.reliable_window,
             S1 = S0#state{reliable_window = [{N, C} | ReliableWindow0]},
             {noreply, S1};
-        % Examples:
-        % N = 4, Expected = 5. -> 4-5 = -1 
-        % N = 65535, Expected 2. -> 65535-2 = 65533.
         N < Expected; N - Expected >= ?ENET_MAX_SEQ_INDEX/2  ->
             logger:debug("Discard outdated packet. Recv: ~p. Expect: ~p", [N, Expected]),
             {noreply, S0};
