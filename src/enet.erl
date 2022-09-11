@@ -16,6 +16,7 @@
 ]).
 
 -type port_number() :: 0..65535.
+-type mfargs() :: {module(),atom(),[term()]}.
 
 %%%===================================================================
 %%% API
@@ -24,7 +25,7 @@
 -spec start_host(
     Port :: port_number(),
     ConnectFun ::
-        mfa()
+        mfargs()
         | fun((map()) -> {ok, pid()} | {error, term()}),
     Options :: [{atom(), term()}, ...]
 ) ->
