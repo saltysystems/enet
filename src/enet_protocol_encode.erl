@@ -96,7 +96,7 @@ command(#ping{}) ->
     ?PING(<<>>);
 command(C = #reliable{}) ->
     ?SEND_RELIABLE(
-        iolist_size(lists:flatten(C#reliable.data)),
+        iolist_size(C#reliable.data),
         C#reliable.data
     );
 command(C = #unreliable{}) ->
