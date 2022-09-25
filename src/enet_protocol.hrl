@@ -144,12 +144,7 @@
 %% Send Reliable Command
 %%
 
--define(SEND_RELIABLE(DataLength, Data),
-        <<
-          (DataLength) :16,
-          (Data)       /binary
-        >>
-       ).
+-define(SEND_RELIABLE(DataLength, Data), [<<(DataLength):16>>, Data]).
 
 
 %%
