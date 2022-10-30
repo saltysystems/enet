@@ -765,7 +765,7 @@ connected({timeout, recv}, ping, S = #state{rtt = RTT}) ->
     logger:debug("Ping timed out. Increment window"),
     NewTimeout = incr_recv_timeout(RTT),
     {_T, TimeoutVal, _} = NewTimeout,
-    case TimeoutVal > ?PEER_TIMEOUT_MAXIMUM of 
+    case TimeoutVal < ?PEER_TIMEOUT_MAXIMUM of 
         true -> 
             {keep_state, S#state{rtt=TimeoutVal}, [ NewTimeout ]};
         false ->
