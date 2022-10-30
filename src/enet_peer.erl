@@ -911,7 +911,7 @@ make_resend_timer(ChannelID, SentTime, SequenceNumber, Time, Data) ->
     {{timeout, {ChannelID, SentTime, SequenceNumber}}, Time, Data}.
 
 cancel_resend_timer(ChannelID, SentTime, SequenceNumber) ->
-    {{timeout, {ChannelID, SentTime, SequenceNumber}}, infinity, undefined}.
+    {{timeout, {ChannelID, SentTime, SequenceNumber}}, cancel}.
 
 reset_recv_timer() ->
     {{timeout, recv}, 2 * ?PEER_PING_INTERVAL, ping}.
