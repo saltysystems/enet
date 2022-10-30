@@ -373,7 +373,7 @@ acknowledging_connect(cast, {incoming_command, {_H, C = #connect{}}}, S) ->
     },
     {next_state, verifying_connect, NewS, [VerifyConnectTimeout]};
 acknowledging_connect({timeout, {_ChannelID, _SentTime, _SequenceNr}}, _, S) ->
-    logger:debug("acknoledgment timeout"),
+    logger:debug("acknowledgment timeout"),
     {stop, timeout, S};
 acknowledging_connect(EventType, EventContent, S) ->
     handle_event(EventType, EventContent, S).
@@ -762,7 +762,7 @@ connected({timeout, recv}, ping, S) ->
     %% - Stop
     %%
     logger:debug("ping timeout"),
-    {stop, timeout, S};
+    {stop, normal, S};
 connected({timeout, send}, ping, S) ->
     %%
     %% The send-timer was triggered.
