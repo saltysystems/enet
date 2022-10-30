@@ -58,6 +58,7 @@
     incoming_unsequenced_group = 0,
     outgoing_unsequenced_group = 1,
     unsequenced_window = 0,
+    rtt = ?PEER_DEFAULT_ROUND_TRIP_TIME,
     connect_id,
     host,
     channel_count,
@@ -755,14 +756,21 @@ connected({timeout, {ChannelID, SentTime, SequenceNr}}, Data, S) ->
         ),
     SendTimeout = reset_send_timer(),
     {keep_state, S, [NewTimeout, SendTimeout]};
-connected({timeout, recv}, ping, S) ->
+connected({timeout, recv}, ping, S = #state{rtt = RTT}) ->
     %%
     %% The receive-timer was triggered.
     %%
-    %% - Stop
+    %% - Adjust the receive window or stop
     %%
-    logger:debug("ping timeout"),
-    {stop, timeout, S};
+    logger:debug("Ping timed out. Increment window"),
+    NewTimeout = incr_recv_timeout(RTT),
+    {_T, TimeoutVal, _} = NewTimeout,
+    case TimeoutVal > ?PEER_TIMEOUT_MAXIMUM of 
+        true -> 
+            {keep_state, S#state{rtt=TimeoutVal}, [ NewTimeout ]};
+        false ->
+            {stop, timeout, S}
+    end;
 connected({timeout, send}, ping, S) ->
     %%
     %% The send-timer was triggered.
@@ -913,8 +921,12 @@ make_resend_timer(ChannelID, SentTime, SequenceNumber, Time, Data) ->
 cancel_resend_timer(ChannelID, SentTime, SequenceNumber) ->
     {{timeout, {ChannelID, SentTime, SequenceNumber}}, infinity, undefined}.
 
+% Increment the RTT allowable interval every time we would encounter a timeout
+incr_recv_timeout(RTT) ->
+    {{timeout, recv}, RTT * 2, ping}.
+
 reset_recv_timer() ->
-    {{timeout, recv}, 2 * ?PEER_PING_INTERVAL, ping}.
+    {{timeout, recv}, ?PEER_PING_INTERVAL, ping}.
 
 reset_send_timer() ->
     {{timeout, send}, ?PEER_PING_INTERVAL, ping}.
