@@ -32,8 +32,7 @@
 
 -record(state, {
     socket,
-    compress_fun,
-    decompress_fun,
+    compression,
     connect_fun
 }).
 
@@ -100,6 +99,11 @@ init({AssignedPort, ConnectFun, Options}) ->
             {outgoing_bandwidth, OBandwidth} -> OBandwidth;
             false -> 0
         end,
+    Compression = 
+        case lists:keyfind(compression_mode, 1, Options) of
+            {compression, CompressionMode} -> CompressionMode;
+            false -> none
+        end,
     true = gproc:mreg(
         p,
         l,
@@ -117,7 +121,7 @@ init({AssignedPort, ConnectFun, Options}) ->
             %% A socket has already been opened on this port
             %% - The socket will be given to us later
             %%
-            {ok, #state{connect_fun = ConnectFun}};
+            {ok, #state{connect_fun = ConnectFun, compression = Compression}};
         {ok, Socket} ->
             %%
             %% We were able to open a new socket on this port
@@ -125,7 +129,9 @@ init({AssignedPort, ConnectFun, Options}) ->
             %% - Set it to active mode
             %%
             ok = inet:setopts(Socket, [{active, true}]),
-            {ok, #state{connect_fun = ConnectFun, socket = Socket}}
+            {ok, #state{connect_fun = ConnectFun, 
+                        compression = Compression,
+                        socket = Socket}}
     end.
 
 handle_call({connect, IP, Port, Channels}, _From, S) ->
@@ -201,7 +207,7 @@ handle_info({udp, Socket, IP, Port, Packet}, S) ->
     %%
     #state{
         socket = Socket,
-        decompress_fun = Decompress,
+        compression = CompressionMode,
         connect_fun = ConnectFun
     } = S,
     %% TODO: Replace call to enet_protocol_decode with binary pattern match.
@@ -212,14 +218,10 @@ handle_info({udp, Socket, IP, Port, Packet}, S) ->
             sent_time = SentTime
         },
         Rest} = enet_protocol_decode:protocol_header(Packet),
-    % A bit hackish - assume ZLIB for now
-    Decompress = fun(Packet) -> 
-                         zlib:gunzip(Packet)
-                 end,
     Commands =
         case IsCompressed of
             0 -> Rest;
-            1 -> Decompress(Rest)
+            1 -> decompress(Rest, CompressionMode)
         end,
     LocalPort = get_port(self()),
     case RecipientPeerID of
@@ -291,3 +293,19 @@ start_peer(Peer = #enet_peer{name = Ref}) ->
     {ok, Pid} = enet_peer_sup:start_peer(PeerSup, Peer),
     _Ref = gproc:monitor({n, l, {enet_peer, Ref}}),
     {ok, Pid}.
+
+decompress(Data, zlib) -> 
+    Z = zlib:open(),
+    % TODO: Replace with Safe Inflate?
+    zlib:inflate(Z,Data);
+decompress(_Data, Mode) ->
+    unsupported_compress_mode(Mode).
+
+compress(Data, zlib) ->
+    Z = zlib:open(),
+    zlib:deflate(Z,Data);
+compress(_Data, Mode) ->
+    unsupported_compress_mode(Mode).
+
+unsupported_compress_mode(Mode) -> 
+    logger:error("Unsupported compression mode: ~p", [Mode]).
