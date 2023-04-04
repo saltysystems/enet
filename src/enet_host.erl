@@ -101,7 +101,7 @@ init({AssignedPort, ConnectFun, Options}) ->
         end,
     Compression = 
         case lists:keyfind(compression_mode, 1, Options) of
-            {compression, CompressionMode} -> CompressionMode;
+            {compression_mode, CompressionMode} -> CompressionMode;
             false -> none
         end,
     true = gproc:mreg(
