@@ -212,6 +212,10 @@ handle_info({udp, Socket, IP, Port, Packet}, S) ->
             sent_time = SentTime
         },
         Rest} = enet_protocol_decode:protocol_header(Packet),
+    % A bit hackish - assume ZLIB for now
+    Decompress = fun(Packet) -> 
+                         zlib:gunzip(Packet)
+                 end,
     Commands =
         case IsCompressed of
             0 -> Rest;
