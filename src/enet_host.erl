@@ -295,15 +295,12 @@ start_peer(Peer = #enet_peer{name = Ref}) ->
     {ok, Pid}.
 
 decompress(Data, zlib) -> 
-    Z = zlib:open(),
-    % TODO: Replace with Safe Inflate?
-    zlib:inflate(Z,Data);
+    zlib:uncompress(Data);
 decompress(_Data, Mode) ->
     unsupported_compress_mode(Mode).
 
 compress(Data, zlib) ->
-    Z = zlib:open(),
-    zlib:deflate(Z,Data);
+    zlib:compress(Data);
 compress(_Data, Mode) ->
     unsupported_compress_mode(Mode).
 
