@@ -32,7 +32,7 @@
 
 -record(state, {
     socket,
-    compression,
+    compressor,
     connect_fun
 }).
 
@@ -99,7 +99,7 @@ init({AssignedPort, ConnectFun, Options}) ->
             {outgoing_bandwidth, OBandwidth} -> OBandwidth;
             false -> 0
         end,
-    Compression = 
+    Compressor = 
         case lists:keyfind(compression_mode, 1, Options) of
             {compression_mode, CompressionMode} -> CompressionMode;
             false -> none
@@ -121,7 +121,7 @@ init({AssignedPort, ConnectFun, Options}) ->
             %% A socket has already been opened on this port
             %% - The socket will be given to us later
             %%
-            {ok, #state{connect_fun = ConnectFun, compression = Compression}};
+            {ok, #state{connect_fun = ConnectFun, compressor = Compressor}};
         {ok, Socket} ->
             %%
             %% We were able to open a new socket on this port
@@ -130,7 +130,7 @@ init({AssignedPort, ConnectFun, Options}) ->
             %%
             ok = inet:setopts(Socket, [{active, true}]),
             {ok, #state{connect_fun = ConnectFun, 
-                        compression = Compression,
+                        compressor = Compressor,
                         socket = Socket}}
     end.
 
@@ -165,17 +165,28 @@ handle_call({connect, IP, Port, Channels}, _From, S) ->
             error:exists -> {error, exists}
         end,
     {reply, Reply, S};
-handle_call({send_outgoing_commands, Commands, IP, Port, ID}, _From, S) ->
+handle_call({send_outgoing_commands, C, IP, Port, ID}, _From, S) ->
     %%
     %% Received outgoing commands from a peer.
     %%
-    %% - Compress commands if compressor available (TODO)
+    %% - Compress commands if compressor available
     %% - Wrap the commands in a protocol header
     %% - Send the packet
     %% - Return sent time
     %%
+    #state{
+        compressor = CompressionMode
+    } = S,
+    {Compressed, Commands} = 
+        case CompressionMode of
+            none -> 
+                {0, C}; % uncompressed
+            Compressor ->
+                {1, compress(C, Compressor)}
+        end,
     SentTime = get_time(),
     PH = #protocol_header{
+        compressed = Compressed,
         peer_id = ID,
         sent_time = SentTime
     },
@@ -207,7 +218,7 @@ handle_info({udp, Socket, IP, Port, Packet}, S) ->
     %%
     #state{
         socket = Socket,
-        compression = CompressionMode,
+        compressor = CompressionMode,
         connect_fun = ConnectFun
     } = S,
     %% TODO: Replace call to enet_protocol_decode with binary pattern match.
