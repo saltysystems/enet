@@ -32,8 +32,7 @@
 
 -record(state, {
     socket,
-    compress_fun,
-    decompress_fun,
+    compressor,
     connect_fun
 }).
 
@@ -100,6 +99,11 @@ init({AssignedPort, ConnectFun, Options}) ->
             {outgoing_bandwidth, OBandwidth} -> OBandwidth;
             false -> 0
         end,
+    Compressor = 
+        case lists:keyfind(compression_mode, 1, Options) of
+            {compression_mode, CompressionMode} -> CompressionMode;
+            false -> none
+        end,
     true = gproc:mreg(
         p,
         l,
@@ -117,7 +121,7 @@ init({AssignedPort, ConnectFun, Options}) ->
             %% A socket has already been opened on this port
             %% - The socket will be given to us later
             %%
-            {ok, #state{connect_fun = ConnectFun}};
+            {ok, #state{connect_fun = ConnectFun, compressor = Compressor}};
         {ok, Socket} ->
             %%
             %% We were able to open a new socket on this port
@@ -125,7 +129,9 @@ init({AssignedPort, ConnectFun, Options}) ->
             %% - Set it to active mode
             %%
             ok = inet:setopts(Socket, [{active, true}]),
-            {ok, #state{connect_fun = ConnectFun, socket = Socket}}
+            {ok, #state{connect_fun = ConnectFun, 
+                        compressor = Compressor,
+                        socket = Socket}}
     end.
 
 handle_call({connect, IP, Port, Channels}, _From, S) ->
@@ -159,17 +165,28 @@ handle_call({connect, IP, Port, Channels}, _From, S) ->
             error:exists -> {error, exists}
         end,
     {reply, Reply, S};
-handle_call({send_outgoing_commands, Commands, IP, Port, ID}, _From, S) ->
+handle_call({send_outgoing_commands, C, IP, Port, ID}, _From, S) ->
     %%
     %% Received outgoing commands from a peer.
     %%
-    %% - Compress commands if compressor available (TODO)
+    %% - Compress commands if compressor available
     %% - Wrap the commands in a protocol header
     %% - Send the packet
     %% - Return sent time
     %%
+    #state{
+        compressor = CompressionMode
+    } = S,
+    {Compressed, Commands} = 
+        case CompressionMode of
+            none -> 
+                {0, C}; % uncompressed
+            Compressor ->
+                {1, compress(C, Compressor)}
+        end,
     SentTime = get_time(),
     PH = #protocol_header{
+        compressed = Compressed,
         peer_id = ID,
         sent_time = SentTime
     },
@@ -201,7 +218,7 @@ handle_info({udp, Socket, IP, Port, Packet}, S) ->
     %%
     #state{
         socket = Socket,
-        decompress_fun = Decompress,
+        compressor = CompressionMode,
         connect_fun = ConnectFun
     } = S,
     %% TODO: Replace call to enet_protocol_decode with binary pattern match.
@@ -215,7 +232,7 @@ handle_info({udp, Socket, IP, Port, Packet}, S) ->
     Commands =
         case IsCompressed of
             0 -> Rest;
-            1 -> Decompress(Rest)
+            1 -> decompress(Rest, CompressionMode)
         end,
     LocalPort = get_port(self()),
     case RecipientPeerID of
@@ -287,3 +304,16 @@ start_peer(Peer = #enet_peer{name = Ref}) ->
     {ok, Pid} = enet_peer_sup:start_peer(PeerSup, Peer),
     _Ref = gproc:monitor({n, l, {enet_peer, Ref}}),
     {ok, Pid}.
+
+decompress(Data, zlib) -> 
+    zlib:uncompress(Data);
+decompress(_Data, Mode) ->
+    unsupported_compress_mode(Mode).
+
+compress(Data, zlib) ->
+    zlib:compress(Data);
+compress(_Data, Mode) ->
+    unsupported_compress_mode(Mode).
+
+unsupported_compress_mode(Mode) -> 
+    logger:error("Unsupported compression mode: ~p", [Mode]).
