@@ -35,7 +35,8 @@ start_host(Port, ConnectFun, Options) -> {ok, port_number()} | {error, term()}
       {peer_limit, peer_count()} |
       {channel_limit, channel_count()} |
       {incoming_bandwidth, bytes_per_second()} |
-      {outgoing_bandwidth, bytes_per_second()}
+      {outgoing_bandwidth, bytes_per_second()} |
+      {compression_mode, atom()}
 ```
 Start a new host. If `Port` set to `0`, the port will be dynamically assigned by the underlying operating system. The assigned port is returned.
 
