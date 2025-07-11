@@ -5,7 +5,7 @@
 
 -export([
     acknowledge/2,
-    connect/12,
+    connect/13,
     verify_connect/8,
     sequenced_disconnect/0,
     unsequenced_disconnect/0,
@@ -43,7 +43,8 @@ connect(
     PacketThrottleAcceleration,
     PacketThrottleDeceleration,
     ConnectID,
-    OutgoingReliableSequenceNumber
+    OutgoingReliableSequenceNumber,
+    PrivData
 ) ->
     WindowSize = calculate_initial_window_size(OutgoingBandwidth),
     {
@@ -65,8 +66,8 @@ connect(
             packet_throttle_acceleration = PacketThrottleAcceleration,
             packet_throttle_deceleration = PacketThrottleDeceleration,
             connect_id = ConnectID,
-            %% What is this used for?
-            data = 0
+            %% Application private data
+            data = PrivData
         }
     }.
 
