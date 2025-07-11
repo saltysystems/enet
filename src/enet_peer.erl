@@ -63,6 +63,7 @@
     channel_count,
     channels,
     worker,
+    data = 0,
     connect_fun
 }).
 
@@ -239,7 +240,8 @@ connecting(enter, _OldState, S) ->
         packet_throttle_interval = PacketThrottleInterval,
         packet_throttle_acceleration = PacketThrottleAcceleration,
         packet_throttle_deceleration = PacketThrottleDeceleration,
-        outgoing_reliable_sequence_number = SequenceNr
+        outgoing_reliable_sequence_number = SequenceNr,
+        data = PrivData
     } = S,
     IncomingBandwidth = enet_host:get_incoming_bandwidth(Host),
     OutgoingBandwidth = enet_host:get_outgoing_bandwidth(Host),
@@ -259,7 +261,8 @@ connecting(enter, _OldState, S) ->
             PacketThrottleAcceleration,
             PacketThrottleDeceleration,
             ConnectID,
-            SequenceNr
+            SequenceNr,
+            PrivData
         ),
     HBin = enet_protocol_encode:command_header(ConnectH),
     CBin = enet_protocol_encode:command(ConnectC),
@@ -323,7 +326,7 @@ acknowledging_connect(cast, {incoming_command, {_H, C = #connect{}}}, S) ->
         packet_throttle_acceleration = PacketThrottleAcceleration,
         packet_throttle_deceleration = PacketThrottleDeceleration,
         connect_id = ConnectID,
-        data = _Data
+        data = PrivData
     } = C,
     #state{
         host = Host,
@@ -369,7 +372,8 @@ acknowledging_connect(cast, {incoming_command, {_H, C = #connect{}}}, S) ->
         packet_throttle_acceleration = PacketThrottleAcceleration,
         packet_throttle_deceleration = PacketThrottleDeceleration,
         outgoing_reliable_sequence_number = SequenceNr + 1,
-        channel_count = ChannelCount
+        channel_count = ChannelCount,
+        data = PrivData
     },
     {next_state, verifying_connect, NewS, [VerifyConnectTimeout]};
 acknowledging_connect({timeout, {_ChannelID, _SentTime, _SequenceNr}}, _, S) ->
