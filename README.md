@@ -60,7 +60,20 @@ connect_peer(HostPort, IP, RemotePort, ChannelCount) -> {ok, Peer} | {error, ato
     ChannelCount = channel_count()
     Peer = pid()
 ```
-Start a new peer on the host listening on `HostPort` connecting to a remote host on address `IP:RemotePort`. The peer process will call `ConnectFun` (given to start_host/3) when the handshake has been completed successfully.
+Start a new peer on the host listening on `HostPort` connecting to a remote host on address `IP:RemotePort`. The peer process will call `ConnectFun` (given to start_host/3) when the handshake has been completed successfully. A random _uint32_ integer will be sent as **peer_id** in enet `CONNECT` packet 'Data' field, as required by Godot.
+
+#### connect_peer/5
+```erlang
+connect_peer(HostPort, IP, RemotePort, ChannelCount, Data) -> {ok, Peer} | {error, atom()}
+
+    HostPort = port_number()
+    IP = string()
+    RemotePort = port_number()
+    ChannelCount = channel_count()
+    Peer = pid()
+    Data = pos_integer()
+```
+Start a new peer on the host listening on `HostPort` connecting to a remote host on address `IP:RemotePort`. The peer process will call `ConnectFun` (given to start_host/3) when the handshake has been completed successfully. 'Data' must be a _uint32_ integer that will be sent in enet `CONNECT` packet 'Data' field.
 
 #### disconnect_peer/1
 ```erlang

@@ -5,7 +5,7 @@
 
 -export([
     acknowledge/2,
-    connect/12,
+    connect/13,
     verify_connect/8,
     sequenced_disconnect/0,
     unsequenced_disconnect/0,
@@ -23,7 +23,8 @@ acknowledge(H = #command_header{}, SentTime) ->
     {
         #command_header{
             command = ?COMMAND_ACKNOWLEDGE,
-            channel_id = ChannelID
+            channel_id = ChannelID,
+            reliable_sequence_number = N
         },
         #acknowledge{
             received_reliable_sequence_number = N,
@@ -43,7 +44,8 @@ connect(
     PacketThrottleAcceleration,
     PacketThrottleDeceleration,
     ConnectID,
-    OutgoingReliableSequenceNumber
+    OutgoingReliableSequenceNumber,
+    PacketData
 ) ->
     WindowSize = calculate_initial_window_size(OutgoingBandwidth),
     {
@@ -66,7 +68,7 @@ connect(
             packet_throttle_deceleration = PacketThrottleDeceleration,
             connect_id = ConnectID,
             %% What is this used for?
-            data = 0
+            data = PacketData
         }
     }.
 

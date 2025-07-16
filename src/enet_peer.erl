@@ -63,7 +63,9 @@
     channel_count,
     channels,
     worker,
-    connect_fun
+    connect_fun,
+    connect_packet_data,
+    connect_timer_id
 }).
 
 %%==============================================================
@@ -172,7 +174,8 @@ init([LocalPort, P = #enet_peer{handshake_flow = local}]) ->
         name = Ref,
         host = Host,
         channels = N,
-        connect_fun = ConnectFun
+        connect_fun = ConnectFun,
+        connect_packet_data = PacketData
     } = P,
     enet_pool:connect_peer(LocalPort, Ref),
     gproc:reg({n, l, {enet_peer, Ref}}),
@@ -185,7 +188,8 @@ init([LocalPort, P = #enet_peer{handshake_flow = local}]) ->
         port = Port,
         peer_id = PeerID,
         channel_count = N,
-        connect_fun = ConnectFun
+        connect_fun = ConnectFun,
+        connect_packet_data = PacketData
     },
     {ok, connecting, S};
 init([LocalPort, P = #enet_peer{handshake_flow = remote}]) ->
@@ -201,7 +205,8 @@ init([LocalPort, P = #enet_peer{handshake_flow = remote}]) ->
         port = Port,
         name = Ref,
         host = Host,
-        connect_fun = ConnectFun
+        connect_fun = ConnectFun,
+        connect_packet_data = PacketData
     } = P,
     enet_pool:connect_peer(LocalPort, Ref),
     gproc:reg({n, l, {enet_peer, Ref}}),
@@ -213,7 +218,8 @@ init([LocalPort, P = #enet_peer{handshake_flow = remote}]) ->
         ip = IP,
         port = Port,
         peer_id = PeerID,
-        connect_fun = ConnectFun
+        connect_fun = ConnectFun,
+        connect_packet_data = PacketData
     },
     {ok, acknowledging_connect, S}.
 
@@ -239,7 +245,8 @@ connecting(enter, _OldState, S) ->
         packet_throttle_interval = PacketThrottleInterval,
         packet_throttle_acceleration = PacketThrottleAcceleration,
         packet_throttle_deceleration = PacketThrottleDeceleration,
-        outgoing_reliable_sequence_number = SequenceNr
+        outgoing_reliable_sequence_number = SequenceNr,
+        connect_packet_data = PacketData
     } = S,
     IncomingBandwidth = enet_host:get_incoming_bandwidth(Host),
     OutgoingBandwidth = enet_host:get_outgoing_bandwidth(Host),
@@ -259,7 +266,8 @@ connecting(enter, _OldState, S) ->
             PacketThrottleAcceleration,
             PacketThrottleDeceleration,
             ConnectID,
-            SequenceNr
+            SequenceNr,
+            PacketData
         ),
     HBin = enet_protocol_encode:command_header(ConnectH),
     CBin = enet_protocol_encode:command(ConnectC),
@@ -271,9 +279,11 @@ connecting(enter, _OldState, S) ->
         make_resend_timer(
             ChannelID, SentTime, SequenceNr, ?PEER_TIMEOUT_MINIMUM, Data
         ),
+    ConnectTimerId = {ChannelID, SentTime, SequenceNr},
     NewS = S#state{
         outgoing_reliable_sequence_number = SequenceNr + 1,
-        connect_id = ConnectID
+        connect_id = ConnectID,
+        connect_timer_id = ConnectTimerId
     },
     {keep_state, NewS, [ConnectTimeout]};
 connecting(cast, {incoming_command, {H, C = #acknowledge{}}}, S) ->
@@ -290,6 +300,18 @@ connecting(cast, {incoming_command, {H, C = #acknowledge{}}}, S) ->
     } = C,
     CanceledTimeout = cancel_resend_timer(ChannelID, SentTime, SequenceNumber),
     {next_state, acknowledging_verify_connect, S, [CanceledTimeout]};
+connecting(cast, {incoming_command, {H, C=#verify_connect{}}}, S) ->
+    %% cancel the CONNECT retry
+    #state{
+            connect_timer_id = ConnectTimerID
+    } = S,
+    {ChannelID, SentTime, SequenceNr} = ConnectTimerID,
+    CanceledTimeout = cancel_resend_timer(ChannelID, SentTime, SequenceNr),
+    NewS = S#state{connect_timer_id = undefined}, 
+    %% now jump into acknowledging_verify_connect *and* immediately
+    %% re‐fire the same verify_connect event there:
+    {next_state, acknowledging_verify_connect, NewS,
+     [{next_event, cast, {incoming_command, {H, C}}}, CanceledTimeout]};
 connecting({timeout, {_ChannelID, _SentTime, _SequenceNumber}}, _, S) ->
     logger:debug("connection timeout"),
     {stop, timeout, S};
@@ -323,7 +345,7 @@ acknowledging_connect(cast, {incoming_command, {_H, C = #connect{}}}, S) ->
         packet_throttle_acceleration = PacketThrottleAcceleration,
         packet_throttle_deceleration = PacketThrottleDeceleration,
         connect_id = ConnectID,
-        data = _Data
+        data = PacketData
     } = C,
     #state{
         host = Host,
@@ -369,7 +391,8 @@ acknowledging_connect(cast, {incoming_command, {_H, C = #connect{}}}, S) ->
         packet_throttle_acceleration = PacketThrottleAcceleration,
         packet_throttle_deceleration = PacketThrottleDeceleration,
         outgoing_reliable_sequence_number = SequenceNr + 1,
-        channel_count = ChannelCount
+        channel_count = ChannelCount,
+        connect_packet_data = PacketData
     },
     {next_state, verifying_connect, NewS, [VerifyConnectTimeout]};
 acknowledging_connect({timeout, {_ChannelID, _SentTime, _SequenceNr}}, _, S) ->
@@ -415,15 +438,17 @@ acknowledging_verify_connect(
     %%
     #state{channel_count = LocalChannelCount} = S,
     LocalMTU = get_mtu(self()),
+    %% TODO: Review handling of bandwidth and window size compared to reference implementation.
+    RecvBandwidthLimits = #bandwidth_limit{
+        incoming_bandwidth = C#verify_connect.incoming_bandwidth,
+        outgoing_bandwidth = C#verify_connect.outgoing_bandwidth
+    },
     case S of
         #state{
             %% ---
             %% Fields below are matched against the values received in
             %% the Verify Connect command.
             %% ---
-            window_size = WindowSize,
-            incoming_bandwidth = IncomingBandwidth,
-            outgoing_bandwidth = OutgoingBandwidth,
             packet_throttle_interval = ThrottleInterval,
             packet_throttle_acceleration = ThrottleAcceleration,
             packet_throttle_deceleration = ThrottleDeceleration,
@@ -434,7 +459,8 @@ acknowledging_verify_connect(
             LocalMTU =:= RemoteMTU
         ->
             NewS = S#state{remote_peer_id = RemotePeerID},
-            {next_state, connected, NewS};
+            %% Set incoming_bandwidth, outgoing_bandwidth, window_size with Bandwidth limit cast for now
+            {next_state, connected, NewS, [{next_event, cast, {incoming_command, {_H, RecvBandwidthLimits}}}]};
         _Mismatch ->
             {stop, connect_verification_failed, S}
     end;
@@ -477,7 +503,8 @@ connected(enter, _OldState, S) ->
         remote_peer_id = RemotePeerID,
         connect_id = ConnectID,
         channel_count = N,
-        connect_fun = ConnectFun
+        connect_fun = ConnectFun,
+        connect_packet_data = PacketData
     } = S,
     true = gproc:mreg(p, l, [
         {connect_id, ConnectID},
@@ -491,7 +518,8 @@ connected(enter, _OldState, S) ->
         port => Port,
         peer => self(),
         channels => Channels,
-        connect_id => ConnectID
+        connect_id => ConnectID,
+        connect_packet_data => PacketData
     },
     case start_worker(ConnectFun, PeerInfo) of
         {error, Reason} ->
@@ -759,9 +787,15 @@ connected({timeout, recv}, ping, S) ->
     %%
     %% The receive-timer was triggered.
     %%
+    %% - Notify worker application
     %% - Stop
     %%
     logger:debug("ping timeout"),
+        #state{
+        worker = Worker,
+        connect_id = ConnectID
+    } = S,
+    Worker ! {enet, ping_timeout, remote, self(), ConnectID},
     {stop, normal, S};
 connected({timeout, send}, ping, S) ->
     %%
